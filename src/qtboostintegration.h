@@ -4,9 +4,16 @@
 
 #   include <QtCore/QObject>
 #   include <QtCore/QMetaType>
-#   include <boost/function.hpp>
-#   include <boost/preprocessor/iteration.hpp>
-#   include <boost/preprocessor/repetition.hpp>
+
+// for building the library itself, we don't need all the template
+// magic: omit it to reduce build times
+#   ifndef QTBOOSTINTEGRATION_LIBRARY_BUILD
+#      include <boost/function.hpp>
+#      include <boost/preprocessor/iteration.hpp>
+#      include <boost/preprocessor/repetition.hpp>
+#   else
+namespace boost { template <typename Signature> class function; };
+#   endif
 
 // define the adapter glue we'll need
 namespace QtBoostIntegrationInternal {
@@ -44,13 +51,15 @@ bool qtBoostConnect(QObject *sender, const char *signal,
 bool qtBoostDisconnect(QObject *sender, const char *signal, QObject *receiver);
 
 // set up the iteration limits and run the iteration
-#   ifndef QTLAMBDA_MAX_ARGUMENTS
-#   define QTLAMBDA_MAX_ARGUMENTS 5
-#   endif
+#   ifndef QTBOOSTINTEGRATION_LIBRARY_BUILD
+#      ifndef QTLAMBDA_MAX_ARGUMENTS
+#      define QTLAMBDA_MAX_ARGUMENTS 5
+#      endif
 
-#   define BOOST_PP_ITERATION_LIMITS (0, QTLAMBDA_MAX_ARGUMENTS)
-#   define BOOST_PP_FILENAME_1 "qtboostintegration.h"
-#   include BOOST_PP_ITERATE()
+#      define BOOST_PP_ITERATION_LIMITS (0, QTLAMBDA_MAX_ARGUMENTS)
+#      define BOOST_PP_FILENAME_1 "qtboostintegration.h"
+#      include BOOST_PP_ITERATE()
+#   endif
 
 #   endif // QTLAMBDA_H
 #else // BOOST_PP_IS_ITERATING

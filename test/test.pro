@@ -9,7 +9,7 @@ CONFIG   -= app_bundle
 
 TEMPLATE = app
 
-INCLUDEPATH += .. ../../boost_1_44_0 ../src
+INCLUDEPATH += ../src $$BOOST_DIR
 
 SOURCES += qtboostintegrationtest.cpp
 DEFINES += SRCDIR=\\\"$$PWD/\\\"

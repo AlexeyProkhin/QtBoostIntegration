@@ -7,7 +7,7 @@ TARGET = QtBoostIntegration
 TEMPLATE = lib
 CONFIG += staticlib
 
-INCLUDEPATH += ../../boost_1_44_0
+DEFINES += QTBOOSTINTEGRATION_LIBRARY_BUILD
 
 SOURCES += \
     qtboostintegration.cpp \
