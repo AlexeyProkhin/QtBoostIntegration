@@ -1,22 +1,17 @@
-#-------------------------------------------------
-#
-# Project created by QtCreator 2010-11-23T18:43:38
-#
-#-------------------------------------------------
+include(../config.pri)
 
 QT       += testlib
-
 QT       -= gui
 
-TARGET = tst_qtlambdatest
+TARGET = qtboostintegrationtest
 CONFIG   += console
 CONFIG   -= app_bundle
 
 TEMPLATE = app
 
-INCLUDEPATH += .. ../../boost_1_45_0
+INCLUDEPATH += .. ../../boost_1_44_0 ../src
 
-SOURCES += tst_qtlambdatest.cpp
+SOURCES += qtboostintegrationtest.cpp
 DEFINES += SRCDIR=\\\"$$PWD/\\\"
 
-LIBS += -L../Debug -L../Release -lQtLambda
+LIBS += -L../src -lQtBoostIntegration

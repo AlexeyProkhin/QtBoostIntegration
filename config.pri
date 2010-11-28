@@ -1,0 +1,3 @@
+macx {
+    CONFIG += ppc
+}

@@ -1,23 +1,21 @@
-#-------------------------------------------------
-#
-# Project created by QtCreator 2010-11-22T16:32:18
-#
-#-------------------------------------------------
+include(../config.pri)
 
 QT       -= gui
 
-TARGET = QtLambda
+TARGET = QtBoostIntegration
+
 TEMPLATE = lib
+CONFIG += staticlib
 
-INCLUDEPATH += ../boost_1_45_0
+INCLUDEPATH += ../../boost_1_44_0
 
-DEFINES += QTLAMBDA_LIBRARY
-
-SOURCES += qtlambda.cpp \
+SOURCES += \
+    qtboostintegration.cpp \
     bindingobject.cpp
 
-HEADERS += qtlambda.h\
-        QtLambda_global.h \
+HEADERS += \
+    QtBoostIntegration \
+    qtboostintegration.h\
     bindingobject_p.h
 
 symbian {

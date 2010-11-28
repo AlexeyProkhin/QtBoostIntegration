@@ -1,10 +1,9 @@
 #include "bindingobject_p.h"
-#include "qtlambda.h"
+#include "qtboostintegration.h"
 
 #include <QtCore/QMetaMethod>
 
-namespace qtlambda {
-namespace detail {
+namespace QtBoostIntegrationInternal {
 
 class ConnectNotifyObject : public QObject {
 public:
@@ -26,7 +25,7 @@ BindingObject::~BindingObject()
     }
 }
 
-static const uint qt_meta_data_qtlambda__detail__BindingObject[] = {
+static const uint qt_meta_data_QtBoostIntegrationInternal__BindingObject[] = {
 
  // content:
        5,       // revision
@@ -40,31 +39,31 @@ static const uint qt_meta_data_qtlambda__detail__BindingObject[] = {
        0,       // signalCount
 
  // slots: signature, parameters, type, tag, flags
-      33,   32,   32,   32, 0x0a,
+      42,   62,   62,   62, 0x0a,
 
        0        // eod
 };
 
-static const char qt_meta_stringdata_qtlambda__detail__BindingObject[] = {
-    "qtlambda::detail::BindingObject\0\0"
-    "receiverDestroyed()\0"
+static const char qt_meta_stringdata_QtBoostIntegrationInternal__BindingObject[] = {
+    "QtBoostIntegrationInternal::BindingObject\0"
+    "receiverDestroyed()\0\0"
 };
 
-const QMetaObject qtlambda::detail::BindingObject::staticMetaObject = {
-    { &QObject::staticMetaObject, qt_meta_stringdata_qtlambda__detail__BindingObject,
-      qt_meta_data_qtlambda__detail__BindingObject, 0 }
+const QMetaObject QtBoostIntegrationInternal::BindingObject::staticMetaObject = {
+    { &QObject::staticMetaObject, qt_meta_stringdata_QtBoostIntegrationInternal__BindingObject,
+      qt_meta_data_QtBoostIntegrationInternal__BindingObject, 0 }
 };
 
-const QMetaObject *BindingObject::metaObject() const
+const QMetaObject *QtBoostIntegrationInternal::BindingObject::metaObject() const
 {
     return QObject::d_ptr->metaObject ? QObject::d_ptr->metaObject : &staticMetaObject;
 }
 
-void *BindingObject::qt_metacast(const char *_clname)
+void *QtBoostIntegrationInternal::BindingObject::qt_metacast(const char *_clname)
 {
     if (!_clname) return 0;
-    if (!strcmp(_clname, qt_meta_stringdata_qtlambda__detail__BindingObject))
-        return static_cast<void*>(const_cast< BindingObject*>(this));
+    if (!strcmp(_clname, qt_meta_stringdata_QtBoostIntegrationInternal__BindingObject))
+        return static_cast<void*>(const_cast<BindingObject*>(this));
     return QObject::qt_metacast(_clname);
 }
 
@@ -126,7 +125,7 @@ bool BindingObject::bind(QObject *sender, const char *signal,
     }
 
     // wire up a connection from the binding object to the sender
-    bool connected = QMetaObject::connect(sender, signalIndex, this, slotIndex + bindingOffset());
+    bool connected = QMetaObject::connect(sender, signalIndex, this, slotIndex + bindingOffset(), connType);
     if (!connected)
         return false;
 
@@ -206,5 +205,5 @@ void BindingObject::receiverDestroyed()
         unbind(0, 0, receiver);
 }
 
-};
-};
+}; // namespace QtBoostInternal
+

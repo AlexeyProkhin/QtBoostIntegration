@@ -1,13 +1,12 @@
-#include "qtlambda.h"
+#include "qtboostintegration.h"
 #include "bindingobject_p.h"
 
 #include <QtCore/QThread>
 #include <QtCore/QThreadStorage>
 
-namespace qtlambda {
-namespace detail {
+static QThreadStorage<QtBoostIntegrationInternal::BindingObject *> s_bindingObjects;
 
-static QThreadStorage<BindingObject *> s_bindingObjects;
+namespace QtBoostIntegrationInternal {
 
 bool doConnect(QObject *sender, const char *signal,
                QObject *receiver, connection_adapter_base *adapter,
@@ -22,15 +21,13 @@ bool doConnect(QObject *sender, const char *signal,
     return bindingObj->bind(sender, signal, receiver, adapter, connType);
 }
 
-}; // namespace detail
+}; // namespace QtBoostIntegrationInternal
 
-bool disconnect(QObject *sender, const char *signal, QObject *receiver)
+bool qtBoostDisconnect(QObject *sender, const char *signal, QObject *receiver)
 {
-    detail::BindingObject *bindingObj = detail::s_bindingObjects.localData();
+    QtBoostIntegrationInternal::BindingObject *bindingObj = s_bindingObjects.localData();
     if (!bindingObj)
         return false;
 
     return bindingObj->unbind(sender, signal, receiver);
 }
-
-}; // namespace qtlambda

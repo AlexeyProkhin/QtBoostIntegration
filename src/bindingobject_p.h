@@ -4,15 +4,13 @@
 #include <QtCore/QObject>
 #include <QtCore/QVector>
 
-namespace qtlambda {
-namespace detail {
+namespace QtBoostIntegrationInternal {
 
 class connection_adapter_base;
 
 class BindingObject : public QObject
 {
     // no Q_OBJECT, since we don't want moc to run
-    // Q_OBJECT
 public:
     explicit BindingObject(QObject *parent = 0);
     virtual ~BindingObject();
@@ -29,11 +27,11 @@ public:
     { return metaObject()->methodOffset() + metaObject()->methodCount(); }
 
 // we _do_ have the QMetaObject data for this, we just don't need moc
-//public slots:
+public slots:
     void receiverDestroyed();
 
     // core QObject stuff: we implement this ourselves rather than
-    // via moc
+    // via moc, since qt_metacall() is the core of the binding
     static const QMetaObject staticMetaObject;
     virtual const QMetaObject *metaObject() const;
     virtual void *qt_metacast(const char *);
@@ -55,7 +53,6 @@ private:
     QVector<Binding> m_bindings;
 };
 
-};
-};
+}; // namespace QtBoostIntegrationInternal
 
 #endif // BINDINGOBJECT_P_H

@@ -2,7 +2,6 @@
 #   ifndef QTLAMBDA_H
 #   define QTLAMBDA_H
 
-#   include "QtLambda_global.h"
 #   include <QtCore/QObject>
 #   include <QtCore/QMetaType>
 #   include <boost/function.hpp>
@@ -10,8 +9,7 @@
 #   include <boost/preprocessor/repetition.hpp>
 
 // define the adapter glue we'll need
-namespace qtlambda {
-namespace detail {
+namespace QtBoostIntegrationInternal {
 
 struct connection_adapter_base {
     explicit connection_adapter_base() { }
@@ -28,22 +26,22 @@ template<typename Signature> struct connection_adapter
 bool doConnect(QObject *sender, const char *signal,
                QObject *receiver, connection_adapter_base *adapter,
                Qt::ConnectionType connType);
-};
+}; // namespace QtBoostIntegrationInternal
 
 template<typename Signature> inline
-bool connect(QObject *sender, const char *signal,
+bool qtBoostConnect(QObject *sender, const char *signal,
              QObject *receiver, const boost::function<Signature>& fn,
              Qt::ConnectionType connType = Qt::AutoConnection)
 {
-    return detail::doConnect(sender,
-                             signal,
-                             receiver,
-                             new detail::connection_adapter<Signature>(fn),
-                             connType);
+    return QtBoostIntegrationInternal::doConnect(
+                sender,
+                signal,
+                receiver,
+                new QtBoostIntegrationInternal::connection_adapter<Signature>(fn),
+                connType);
 };
 
-bool disconnect(QObject *sender, const char *signal, QObject *receiver);
-};
+bool qtBoostDisconnect(QObject *sender, const char *signal, QObject *receiver);
 
 // set up the iteration limits and run the iteration
 #   ifndef QTLAMBDA_MAX_ARGUMENTS
@@ -51,7 +49,7 @@ bool disconnect(QObject *sender, const char *signal, QObject *receiver);
 #   endif
 
 #   define BOOST_PP_ITERATION_LIMITS (0, QTLAMBDA_MAX_ARGUMENTS)
-#   define BOOST_PP_FILENAME_1 "qtlambda.h"
+#   define BOOST_PP_FILENAME_1 "qtboostintegration.h"
 #   include BOOST_PP_ITERATE()
 
 #   endif // QTLAMBDA_H
@@ -65,9 +63,7 @@ bool disconnect(QObject *sender, const char *signal, QObject *receiver);
 #define CONNECT_PARTIAL_SPEC void (BOOST_PP_ENUM_PARAMS(n, T))
 #endif
 
-namespace qtlambda {
-
-namespace detail {
+namespace QtBoostIntegrationInternal {
     template<BOOST_PP_ENUM_PARAMS(n, typename T)>
     struct connection_adapter<CONNECT_PARTIAL_SPEC> : public connection_adapter_base {
         explicit connection_adapter(const boost::function<CONNECT_PARTIAL_SPEC> &f)
@@ -92,9 +88,8 @@ namespace detail {
 
         boost::function<CONNECT_PARTIAL_SPEC> mFn;
     };
-};
 
-}; // namespace qtlambda
+}; // namespace QtBoostIntegrationInternal
 
 #undef n
 #undef CONNECT_PARTIAL_SPEC
