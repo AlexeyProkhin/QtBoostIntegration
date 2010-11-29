@@ -1,12 +1,12 @@
 #ifndef BOOST_PP_IS_ITERATING
-#   ifndef QTLAMBDA_H
-#   define QTLAMBDA_H
+#   ifndef QTBOOSTINTEGRATION_H
+#   define QTBOOSTINTEGRATION_H
 
 #   include <QtCore/QObject>
 #   include <QtCore/QMetaType>
 
 // for building the library itself, we don't need all the template
-// magic: omit it to reduce build times
+// magic: omit it to reduce build times and dependencies
 #   ifndef QTBOOSTINTEGRATION_LIBRARY_BUILD
 #      include <boost/function.hpp>
 #      include <boost/preprocessor/iteration.hpp>
@@ -16,35 +16,50 @@ namespace boost { template <typename Signature> class function; };
 #   endif
 
 // define the adapter glue we'll need
-namespace QtBoostIntegrationInternal {
-
-struct connection_adapter_base {
-    explicit connection_adapter_base() { }
-    virtual ~connection_adapter_base() { }
-    virtual void call(void **args) = 0;
-    virtual int types(int maxTypes, int *typeList) = 0;
+class QtBoostAbstractConnectionAdapter;
+struct QtBoostConnectionAdapterVtable {
+    void (*invoke)(QtBoostAbstractConnectionAdapter *thiz, void **args);
+    void (*destroy)(QtBoostAbstractConnectionAdapter *thiz);
 };
 
-template<typename Signature> struct connection_adapter
-        : public connection_adapter_base
+class QtBoostAbstractConnectionAdapter {
+public:
+    QtBoostAbstractConnectionAdapter(QtBoostConnectionAdapterVtable *vt);
+    ~QtBoostAbstractConnectionAdapter();
+    void invoke(void **args);
+
+    static bool connect(QObject *sender, const char *signal,
+                        QObject *receiver, QtBoostAbstractConnectionAdapter *adapter,
+                        int nrArguments, int argumentList[],
+                        Qt::ConnectionType connType);
+
+private:
+    QtBoostConnectionAdapterVtable *m_vtable;
+};
+
+template<typename Signature> class QtBoostConnectionAdapter
+        : public QtBoostAbstractConnectionAdapter
 {
 };
 
-bool doConnect(QObject *sender, const char *signal,
-               QObject *receiver, connection_adapter_base *adapter,
-               Qt::ConnectionType connType);
-}; // namespace QtBoostIntegrationInternal
+template<typename Signature> class QtBoostArgumentMetaTypeLister
+{
+};
 
 template<typename Signature> inline
 bool qtBoostConnect(QObject *sender, const char *signal,
              QObject *receiver, const boost::function<Signature>& fn,
              Qt::ConnectionType connType = Qt::AutoConnection)
 {
-    return QtBoostIntegrationInternal::doConnect(
+    int nrArguments, *argumentList;
+    nrArguments = QtBoostArgumentMetaTypeLister<Signature>::metaTypes(&argumentList);
+    return QtBoostAbstractConnectionAdapter::connect(
                 sender,
                 signal,
                 receiver,
-                new QtBoostIntegrationInternal::connection_adapter<Signature>(fn),
+                new QtBoostConnectionAdapter<Signature>(fn),
+                nrArguments,
+                argumentList,
                 connType);
 };
 
@@ -52,56 +67,79 @@ bool qtBoostDisconnect(QObject *sender, const char *signal, QObject *receiver);
 
 // set up the iteration limits and run the iteration
 #   ifndef QTBOOSTINTEGRATION_LIBRARY_BUILD
-#      ifndef QTLAMBDA_MAX_ARGUMENTS
-#      define QTLAMBDA_MAX_ARGUMENTS 5
+#      ifndef QTBOOSTINTEGRATION_MAX_ARGUMENTS
+#      define QTBOOSTINTEGRATION_MAX_ARGUMENTS 5
 #      endif
 
-#      define BOOST_PP_ITERATION_LIMITS (0, QTLAMBDA_MAX_ARGUMENTS)
+#      define BOOST_PP_ITERATION_LIMITS (0, QTBOOSTINTEGRATION_MAX_ARGUMENTS)
 #      define BOOST_PP_FILENAME_1 "qtboostintegration.h"
 #      include BOOST_PP_ITERATE()
 #   endif
 
-#   endif // QTLAMBDA_H
+#   endif // QTBOOSTINTEGRATION_H
 #else // BOOST_PP_IS_ITERATING
 
 #define n BOOST_PP_ITERATION()
 
 #if n == 0
-#define CONNECT_PARTIAL_SPEC void (void)
+#define QTBI_PARTIAL_SPEC void (void)
 #else
-#define CONNECT_PARTIAL_SPEC void (BOOST_PP_ENUM_PARAMS(n, T))
+#define QTBI_PARTIAL_SPEC void (BOOST_PP_ENUM_PARAMS(n, T))
 #endif
 
-namespace QtBoostIntegrationInternal {
-    template<BOOST_PP_ENUM_PARAMS(n, typename T)>
-    struct connection_adapter<CONNECT_PARTIAL_SPEC> : public connection_adapter_base {
-        explicit connection_adapter(const boost::function<CONNECT_PARTIAL_SPEC> &f)
-            : connection_adapter_base(), mFn(f)
-        {
-        }
+template<BOOST_PP_ENUM_PARAMS(n, typename T)>
+class QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC>
+        : public QtBoostAbstractConnectionAdapter {
+public:
+    explicit QtBoostConnectionAdapter(const boost::function<QTBI_PARTIAL_SPEC> &f)
+        : QtBoostAbstractConnectionAdapter(makeVtable()), m_function(f)
+    {
+    }
 
-        virtual void call(void **args) {
-#define PARAM(z, N, arg) *reinterpret_cast<BOOST_PP_CAT(T, N) *>(args[N+1])
-            mFn(BOOST_PP_ENUM(n, PARAM, ~));
-#undef PARAM
-        }
+private:
+    static void invokeFn(QtBoostAbstractConnectionAdapter *thiz_, void **args) {
+        QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC> *thiz =
+                static_cast<QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC> *>(thiz_);
+#if n == 0
+        Q_UNUSED(args);
+#endif
 
-        virtual int types(int maxTypes, int *typeList) {
-            if (maxTypes < n)
-                return -1;
-#define STORE_METATYPE(z, n, arg) (typeList[n] = qMetaTypeId<BOOST_PP_CAT(T, n)>())
-            BOOST_PP_ENUM(n, STORE_METATYPE, ~);
-#undef STORE_METATYPE
-            return n;
-        }
+#define QTBI_PARAM(z, N, arg) *reinterpret_cast<BOOST_PP_CAT(T, N) *>(args[N+1])
+        thiz->m_function(BOOST_PP_ENUM(n, QTBI_PARAM, ~));
+#undef QTBI_PARAM
+    }
 
-        boost::function<CONNECT_PARTIAL_SPEC> mFn;
-    };
+    static void destroyFn(QtBoostAbstractConnectionAdapter *thiz_) {
+        QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC> *thiz =
+            static_cast<QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC> *>(thiz_);
+        thiz->~QtBoostConnectionAdapter();
+    }
 
-}; // namespace QtBoostIntegrationInternal
+    static QtBoostConnectionAdapterVtable *makeVtable() {
+        static QtBoostConnectionAdapterVtable vt = { invokeFn, destroyFn };
+        return &vt;
+    }
+
+
+    boost::function<QTBI_PARTIAL_SPEC> m_function;
+};
+
+template<BOOST_PP_ENUM_PARAMS(n, typename T)>
+class QtBoostArgumentMetaTypeLister<QTBI_PARTIAL_SPEC> {
+public:
+    static int metaTypes(int **typeList) {
+        static int types[n+1] = {
+#define QTBI_STORE_METATYPE(z, n, arg) qMetaTypeId<BOOST_PP_CAT(T, n)>()
+        BOOST_PP_ENUM(n, QTBI_STORE_METATYPE, ~)
+#undef QTBI_STORE_METATYPE
+        };
+        *typeList = types;
+        return n;
+    }
+};
 
 #undef n
-#undef CONNECT_PARTIAL_SPEC
+#undef QTBI_PARTIAL_SPEC
 
 #endif // BOOST_PP_IS_ITERATING
 

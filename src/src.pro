@@ -11,12 +11,12 @@ DEFINES += QTBOOSTINTEGRATION_LIBRARY_BUILD
 
 SOURCES += \
     qtboostintegration.cpp \
-    bindingobject.cpp
+    qtboostintegrationbindingobject.cpp
 
 HEADERS += \
     QtBoostIntegration \
     qtboostintegration.h\
-    bindingobject_p.h
+    qtboostintegrationbindingobject_p.h
 
 symbian {
     #Symbian specific definitions

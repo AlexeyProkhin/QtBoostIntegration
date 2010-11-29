@@ -4,21 +4,21 @@
 #include <QtCore/QObject>
 #include <QtCore/QVector>
 
-namespace QtBoostIntegrationInternal {
+class QtBoostAbstractConnectionAdapter;
 
-class connection_adapter_base;
-
-class BindingObject : public QObject
+class QtBoostIntegrationBindingObject : public QObject
 {
     // no Q_OBJECT, since we don't want moc to run
 public:
-    explicit BindingObject(QObject *parent = 0);
-    virtual ~BindingObject();
+    explicit QtBoostIntegrationBindingObject(QObject *parent = 0);
+    virtual ~QtBoostIntegrationBindingObject();
 
     bool bind(QObject *sender,
               const char *signal,
               QObject *receiver,
-              connection_adapter_base *adapter,
+              QtBoostAbstractConnectionAdapter *adapter,
+              int nrArguments,
+              int argumentTypeList[],
               Qt::ConnectionType connType);
 
     bool unbind(QObject *sender, const char *signal, QObject *receiver);
@@ -41,18 +41,16 @@ private:
     struct Binding {
         QObject *sender;
         QObject *receiver;
-        connection_adapter_base* adapter;
+        QtBoostAbstractConnectionAdapter* adapter;
         int signalIndex;
 
         Binding() : sender(0), receiver(0), adapter(0), signalIndex(-1) { }
-        Binding(QObject *s, int sIx, QObject *r, connection_adapter_base *a)
+        Binding(QObject *s, int sIx, QObject *r, QtBoostAbstractConnectionAdapter *a)
             : sender(s), receiver(r), adapter(a), signalIndex(sIx) { }
     };
-    static QByteArray buildAdapterSignature(connection_adapter_base *adapter);
+    static QByteArray buildAdapterSignature(int nrArguments, int argumentMetaTypeList[]);
 
     QVector<Binding> m_bindings;
 };
-
-}; // namespace QtBoostIntegrationInternal
 
 #endif // BINDINGOBJECT_P_H

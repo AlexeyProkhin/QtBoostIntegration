@@ -1,9 +1,7 @@
-#include "bindingobject_p.h"
+#include "qtboostintegrationbindingobject_p.h"
 #include "qtboostintegration.h"
 
 #include <QtCore/QMetaMethod>
-
-namespace QtBoostIntegrationInternal {
 
 class ConnectNotifyObject : public QObject {
 public:
@@ -13,19 +11,19 @@ public:
     { disconnectNotify(signal); }
 };
 
-BindingObject::BindingObject(QObject *parent) :
+QtBoostIntegrationBindingObject::QtBoostIntegrationBindingObject(QObject *parent) :
     QObject(parent)
 {
 }
 
-BindingObject::~BindingObject()
+QtBoostIntegrationBindingObject::~QtBoostIntegrationBindingObject()
 {
     foreach (const Binding& b, m_bindings) {
         delete b.adapter;
     }
 }
 
-static const uint qt_meta_data_QtBoostIntegrationInternal__BindingObject[] = {
+static const uint qt_meta_data_QtBoostIntegrationBindingObject[] = {
 
  // content:
        5,       // revision
@@ -39,35 +37,35 @@ static const uint qt_meta_data_QtBoostIntegrationInternal__BindingObject[] = {
        0,       // signalCount
 
  // slots: signature, parameters, type, tag, flags
-      42,   62,   62,   62, 0x0a,
+      32,   52,   52,   52, 0x0a,
 
        0        // eod
 };
 
-static const char qt_meta_stringdata_QtBoostIntegrationInternal__BindingObject[] = {
-    "QtBoostIntegrationInternal::BindingObject\0"
+static const char qt_meta_stringdata_QtBoostIntegrationBindingObject[] = {
+    "QtBoostIntegrationBindingObject\0"
     "receiverDestroyed()\0\0"
 };
 
-const QMetaObject QtBoostIntegrationInternal::BindingObject::staticMetaObject = {
-    { &QObject::staticMetaObject, qt_meta_stringdata_QtBoostIntegrationInternal__BindingObject,
-      qt_meta_data_QtBoostIntegrationInternal__BindingObject, 0 }
+const QMetaObject QtBoostIntegrationBindingObject::staticMetaObject = {
+    { &QObject::staticMetaObject, qt_meta_stringdata_QtBoostIntegrationBindingObject,
+      qt_meta_data_QtBoostIntegrationBindingObject, 0 }
 };
 
-const QMetaObject *QtBoostIntegrationInternal::BindingObject::metaObject() const
+const QMetaObject *QtBoostIntegrationBindingObject::metaObject() const
 {
     return QObject::d_ptr->metaObject ? QObject::d_ptr->metaObject : &staticMetaObject;
 }
 
-void *QtBoostIntegrationInternal::BindingObject::qt_metacast(const char *_clname)
+void *QtBoostIntegrationBindingObject::qt_metacast(const char *_clname)
 {
     if (!_clname) return 0;
-    if (!strcmp(_clname, qt_meta_stringdata_QtBoostIntegrationInternal__BindingObject))
-        return static_cast<void*>(const_cast<BindingObject*>(this));
+    if (!strcmp(_clname, qt_meta_stringdata_QtBoostIntegrationBindingObject))
+        return static_cast<void*>(const_cast< QtBoostIntegrationBindingObject*>(this));
     return QObject::qt_metacast(_clname);
 }
 
-int BindingObject::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
+int QtBoostIntegrationBindingObject::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
 {
     // handle QObject base metacalls
     _id = QObject::qt_metacall(_c, _id, _a);
@@ -86,14 +84,15 @@ int BindingObject::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_c == QMetaObject::InvokeMetaMethod &&
             _id < m_bindings.size() && m_bindings[_id].adapter) {
         // if we have a binding for this index, call it
-        m_bindings[_id].adapter->call(_a);
+        m_bindings[_id].adapter->invoke(_a);
         _id -= m_bindings.size();
     }
     return _id;
 }
 
-bool BindingObject::bind(QObject *sender, const char *signal,
-                         QObject *receiver, connection_adapter_base *adapter,
+bool QtBoostIntegrationBindingObject::bind(QObject *sender, const char *signal,
+                         QObject *receiver, QtBoostAbstractConnectionAdapter *adapter,
+                         int nrArguments, int argumentList[],
                          Qt::ConnectionType connType)
 {
     if (!sender || !signal || !adapter)
@@ -109,7 +108,7 @@ bool BindingObject::bind(QObject *sender, const char *signal,
                "qtlambda::connect", "The receiving QObject must be on the thread connect() is called in");
 
     QByteArray signalSignature = sender->metaObject()->normalizedSignature(signal);
-    QByteArray adapterSignature = buildAdapterSignature(adapter);
+    QByteArray adapterSignature = buildAdapterSignature(nrArguments, argumentList);
 
     if (!QMetaObject::checkConnectArgs(signalSignature, adapterSignature))
         return false;
@@ -147,7 +146,7 @@ bool BindingObject::bind(QObject *sender, const char *signal,
     return true;
 }
 
-bool BindingObject::unbind(QObject *sender, const char *signal, QObject *receiver)
+bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal, QObject *receiver)
 {
     int signalIndex = -1;
 
@@ -175,27 +174,20 @@ bool BindingObject::unbind(QObject *sender, const char *signal, QObject *receive
     return found;
 }
 
-QByteArray BindingObject::buildAdapterSignature(connection_adapter_base *adapter)
+QByteArray QtBoostIntegrationBindingObject::buildAdapterSignature
+    (int nrArguments, int argumentMetaTypeList[])
 {
-    const int N_TYPES = 16;
-    int types[N_TYPES];
-
-    int n = adapter->types(N_TYPES, types);
-    Q_ASSERT_X(n >= 0, "qtlambda::connect", "bound function has too many parameters");
-    if (n < 0)
-        return QByteArray("--BAD--");
-
     QByteArray sig("lambda(");
-    for (int i = 0; i < n; i++) {
-        sig += QMetaType::typeName(types[i]);
-        if (i != n-1)
+    for (int i = 0; i < nrArguments; i++) {
+        sig += QMetaType::typeName(argumentMetaTypeList[i]);
+        if (i != nrArguments-1)
             sig += ",";
     }
     sig += ")";
     return sig;
 }
 
-void BindingObject::receiverDestroyed()
+void QtBoostIntegrationBindingObject::receiverDestroyed()
 {
     // when any object for which we are holding a binding is destroyed,
     // remove all of its bindings
@@ -204,6 +196,3 @@ void BindingObject::receiverDestroyed()
     if (receiver)
         unbind(0, 0, receiver);
 }
-
-}; // namespace QtBoostInternal
-
