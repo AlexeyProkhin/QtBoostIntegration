@@ -39,4 +39,6 @@ unix:!symbian {
 }
 
 OTHER_FILES += \
-    .gitignore
+    .gitignore \
+    ../LICENSE.txt \
+    ../README.txt
