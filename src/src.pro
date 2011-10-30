@@ -1,6 +1,7 @@
 include(../config.pri)
 
 QT       -= gui
+QMAKE_CXXFLAGS += --std=c++0x
 
 TARGET = QtBoostIntegration
 
@@ -8,6 +9,7 @@ TEMPLATE = lib
 CONFIG += staticlib
 
 DEFINES += QTBOOSTINTEGRATION_LIBRARY_BUILD
+DEFINES += QTBOOSTINTEGRATION_CHECK_SIGNATURE
 
 SOURCES += \
     qtboostintegration.cpp \

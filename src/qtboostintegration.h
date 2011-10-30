@@ -1,5 +1,6 @@
 /*
  * Copyright 2010  Benjamin K. Stuhl <bks24@cornell.edu>
+ *           2011  Alexey Prokhin <alexey.prokhin@yandex.ru>
  *
  * Permission to use, copy, modify, and distribute this software
  * and its documentation for any purpose and without fee is hereby
@@ -19,22 +20,14 @@
  * arising out of or in connection with the use or performance of
  * this software.
  */
-#ifndef BOOST_PP_IS_ITERATING
-#   ifndef QTBOOSTINTEGRATION_H
-#   define QTBOOSTINTEGRATION_H
 
-#   include <QtCore/QObject>
-#   include <QtCore/QMetaType>
+#ifndef QTBOOSTINTEGRATION_H
+#define QTBOOSTINTEGRATION_H
 
-// for building the library itself, we don't need all the template
-// magic: omit it to reduce build times and dependencies
-#   ifndef QTBOOSTINTEGRATION_LIBRARY_BUILD
-#      include <boost/function.hpp>
-#      include <boost/preprocessor/iteration.hpp>
-#      include <boost/preprocessor/repetition.hpp>
-#   else
-namespace boost { template <typename Signature> class function; };
-#   endif
+#include <QtCore/QObject>
+#include <QtCore/QMetaType>
+#include <functional>
+#include <type_traits>
 
 // define the adapter glue we'll need
 class QtBoostAbstractConnectionAdapter;
@@ -51,88 +44,63 @@ public:
 
     static bool connect(QObject *sender, const char *signal,
                         QObject *receiver, QtBoostAbstractConnectionAdapter *adapter,
+#ifdef QTBOOSTINTEGRATION_CHECK_SIGNATURE
                         int nrArguments, int argumentList[],
+#endif
                         Qt::ConnectionType connType);
 
 private:
     QtBoostConnectionAdapterVtable *m_vtable;
 };
 
-template<typename Signature> class QtBoostConnectionAdapter
-        : public QtBoostAbstractConnectionAdapter
+template <int N, typename... T>
+struct QtBoostCallHelper;
+
+template <int N, typename First, typename... Others>
+struct QtBoostCallHelper<N, First, Others...>
 {
+public:
+    template <typename FN, typename... Args>
+    static inline void call(const FN &fn, void **data, Args... args)
+    {
+        typedef QtBoostCallHelper<N-1, Others...> T;
+        T::call(fn, data + 1, args..., *reinterpret_cast<typename std::remove_reference<First>::type *>(*data));
+    }
 };
 
-template<typename Signature> class QtBoostArgumentMetaTypeLister
+template <>
+struct QtBoostCallHelper<0>
 {
+public:
+    template <typename FN, typename... Args>
+    static inline void call(const FN &fn, void **data, Args... args)
+    {
+        fn(args...);
+    }
 };
 
-template<typename Signature> inline
-bool qtBoostConnect(QObject *sender, const char *signal,
-             QObject *receiver, const boost::function<Signature>& fn,
-             Qt::ConnectionType connType = Qt::AutoConnection)
-{
-    int nrArguments, *argumentList;
-    nrArguments = QtBoostArgumentMetaTypeLister<Signature>::metaTypes(&argumentList);
-    return QtBoostAbstractConnectionAdapter::connect(
-                sender,
-                signal,
-                receiver,
-                new QtBoostConnectionAdapter<Signature>(fn),
-                nrArguments,
-                argumentList,
-                connType);
-};
+template<typename Signature>
+class QtBoostConnectionAdapter;
 
-bool qtBoostDisconnect(QObject *sender, const char *signal, QObject *receiver);
-
-// set up the iteration limits and run the iteration
-#   ifndef QTBOOSTINTEGRATION_LIBRARY_BUILD
-#      ifndef QTBOOSTINTEGRATION_MAX_ARGUMENTS
-#      define QTBOOSTINTEGRATION_MAX_ARGUMENTS 5
-#      endif
-
-#      define BOOST_PP_ITERATION_LIMITS (0, QTBOOSTINTEGRATION_MAX_ARGUMENTS)
-#      define BOOST_PP_FILENAME_1 "qtboostintegration.h"
-#      include BOOST_PP_ITERATE()
-#   endif
-
-#   endif // QTBOOSTINTEGRATION_H
-#else // BOOST_PP_IS_ITERATING
-
-#define n BOOST_PP_ITERATION()
-
-#if n == 0
-#define QTBI_PARTIAL_SPEC void (void)
-#else
-#define QTBI_PARTIAL_SPEC void (BOOST_PP_ENUM_PARAMS(n, T))
-#endif
-
-template<BOOST_PP_ENUM_PARAMS(n, typename T)>
-class QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC>
+template<typename Res, typename... T>
+class QtBoostConnectionAdapter<Res(T...)>
         : public QtBoostAbstractConnectionAdapter {
 public:
-    explicit QtBoostConnectionAdapter(const boost::function<QTBI_PARTIAL_SPEC> &f)
+    explicit QtBoostConnectionAdapter(const std::function<Res(T...)> &f)
         : QtBoostAbstractConnectionAdapter(makeVtable()), m_function(f)
     {
     }
 
 private:
     static void invokeFn(QtBoostAbstractConnectionAdapter *thiz_, void **args) {
-        QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC> *thiz =
-                static_cast<QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC> *>(thiz_);
-#if n == 0
-        Q_UNUSED(args);
-#endif
-
-#define QTBI_PARAM(z, N, arg) *reinterpret_cast<BOOST_PP_CAT(T, N) *>(args[N+1])
-        thiz->m_function(BOOST_PP_ENUM(n, QTBI_PARAM, ~));
-#undef QTBI_PARAM
+        QtBoostConnectionAdapter<Res(T...)> *thiz =
+                static_cast<QtBoostConnectionAdapter<Res(T...)> *>(thiz_);
+        QtBoostCallHelper<sizeof...(T), T...>::call(thiz->m_function, args + 1);
     }
 
     static void destroyFn(QtBoostAbstractConnectionAdapter *thiz_) {
-        QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC> *thiz =
-            static_cast<QtBoostConnectionAdapter<QTBI_PARTIAL_SPEC> *>(thiz_);
+        QtBoostConnectionAdapter<Res(T...)> *thiz =
+            static_cast<QtBoostConnectionAdapter<Res(T...)> *>(thiz_);
         thiz->~QtBoostConnectionAdapter();
     }
 
@@ -142,25 +110,105 @@ private:
     }
 
 
-    boost::function<QTBI_PARTIAL_SPEC> m_function;
+    std::function<Res(T...)> m_function;
 };
 
-template<BOOST_PP_ENUM_PARAMS(n, typename T)>
-class QtBoostArgumentMetaTypeLister<QTBI_PARTIAL_SPEC> {
+#if QTBOOSTINTEGRATION_CHECK_SIGNATURE
+template<typename Signature>
+class QtBoostArgumentMetaTypeLister;
+
+template<typename Res, typename... T>
+class QtBoostArgumentMetaTypeLister<Res(T...)>{
 public:
     static int metaTypes(int **typeList) {
-        static int types[n+1] = {
-#define QTBI_STORE_METATYPE(z, n, arg) qMetaTypeId<BOOST_PP_CAT(T, n)>()
-        BOOST_PP_ENUM(n, QTBI_STORE_METATYPE, ~)
-#undef QTBI_STORE_METATYPE
+        static int types[sizeof...(T)] = {
+            qMetaTypeId<typename std::remove_cv<typename std::remove_reference<T>::type>::type>()...
         };
         *typeList = types;
-        return n;
+        return sizeof...(T);
     }
 };
+#endif
 
-#undef n
-#undef QTBI_PARTIAL_SPEC
+template<typename Signature> inline
+bool lconnect(QObject *sender, const char *signal,
+              QObject *receiver, const std::function<Signature>& fn,
+              Qt::ConnectionType connType = Qt::AutoConnection)
+{
+#ifdef QTBOOSTINTEGRATION_CHECK_SIGNATURE
+    int nrArguments, *argumentList;
+    nrArguments = QtBoostArgumentMetaTypeLister<Signature>::metaTypes(&argumentList);
+#endif
+    return QtBoostAbstractConnectionAdapter::connect(
+                sender,
+                signal,
+                receiver,
+                new QtBoostConnectionAdapter<Signature>(fn),
+#ifdef QTBOOSTINTEGRATION_CHECK_SIGNATURE
+                nrArguments,
+                argumentList,
+#endif
+                connType);
+};
 
-#endif // BOOST_PP_IS_ITERATING
+template<typename Signature>
+struct LambdaSignatureHelper
+{
+    typedef typename LambdaSignatureHelper<decltype(&Signature::operator())>::type type;
+};
 
+template<typename F, typename R, typename... T>
+struct LambdaSignatureHelper<R (F::*)(T...)const>
+{
+    typedef R type(T...);
+};
+
+template<typename F, typename R, typename... T>
+struct LambdaSignatureHelper<R (F::*)(T...)>
+{
+    typedef R type(T...);
+};
+
+template<typename R, typename... T>
+struct LambdaSignatureHelper<R (*)(T...)>
+{
+    typedef R type(T...);
+};
+
+template<typename R, typename... T>
+struct LambdaSignatureHelper<R(T...)>
+{
+    typedef R type(T...);
+};
+
+template<typename FN> inline
+bool lconnect(QObject *sender, const char *signal,
+              QObject *receiver, FN fn,
+              Qt::ConnectionType connType = Qt::AutoConnection)
+{
+    return lconnect<typename LambdaSignatureHelper<FN>::type>(
+                sender,
+                signal,
+                receiver,
+                fn,
+                connType);
+};
+
+
+template<typename FN> inline
+bool lconnect(QObject *sender, const char *signal,
+              QObject *receiver,
+              Qt::ConnectionType connType,
+              FN fn)
+{
+    return lconnect<typename LambdaSignatureHelper<FN>::type>(
+                sender,
+                signal,
+                receiver,
+                fn,
+                connType);
+};
+
+bool ldisconnect(QObject *sender, const char *signal, QObject *receiver);
+
+#endif // QTBOOSTINTEGRATION_H

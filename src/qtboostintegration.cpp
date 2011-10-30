@@ -1,5 +1,6 @@
 /*
  * Copyright 2010  Benjamin K. Stuhl <bks24@cornell.edu>
+ *           2011  Alexey Prokhin <alexey.prokhin@yandex.ru>
  *
  * Permission to use, copy, modify, and distribute this software
  * and its documentation for any purpose and without fee is hereby
@@ -49,7 +50,9 @@ void QtBoostAbstractConnectionAdapter::invoke(void **args)
 
 bool QtBoostAbstractConnectionAdapter::connect(QObject *sender, const char *signal,
                QObject *receiver, QtBoostAbstractConnectionAdapter *adapter,
+#ifdef QTBOOSTINTEGRATION_CHECK_SIGNATURE
                int nrArguments, int argumentTypeList[],
+#endif
                Qt::ConnectionType connType)
 {
     QtBoostIntegrationBindingObject *bindingObj = s_bindingObjects.localData();
@@ -59,10 +62,13 @@ bool QtBoostAbstractConnectionAdapter::connect(QObject *sender, const char *sign
     }
 
     return bindingObj->bind(sender, signal, receiver, adapter,
-                            nrArguments, argumentTypeList, connType);
+#ifdef QTBOOSTINTEGRATION_CHECK_SIGNATURE
+                            nrArguments, argumentTypeList,
+#endif
+                            connType);
 }
 
-bool qtBoostDisconnect(QObject *sender, const char *signal, QObject *receiver)
+bool ldisconnect(QObject *sender, const char *signal, QObject *receiver)
 {
     QtBoostIntegrationBindingObject *bindingObj = s_bindingObjects.localData();
     if (!bindingObj)

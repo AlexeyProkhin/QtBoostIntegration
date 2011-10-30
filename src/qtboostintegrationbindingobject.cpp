@@ -1,5 +1,6 @@
 /*
  * Copyright 2010  Benjamin K. Stuhl <bks24@cornell.edu>
+ *           2011  Alexey Prokhin <alexey.prokhin@yandex.ru>
  *
  * Permission to use, copy, modify, and distribute this software
  * and its documentation for any purpose and without fee is hereby
@@ -51,7 +52,7 @@ static const uint qt_meta_data_QtBoostIntegrationBindingObject[] = {
        5,       // revision
        0,       // classname
        0,    0, // classinfo
-       1,   14, // methods
+       2,   14, // methods
        0,    0, // properties
        0,    0, // enums/sets
        0,    0, // constructors
@@ -59,14 +60,15 @@ static const uint qt_meta_data_QtBoostIntegrationBindingObject[] = {
        0,       // signalCount
 
  // slots: signature, parameters, type, tag, flags
-      32,   52,   52,   52, 0x0a,
+      33,   32,   32,   32, 0x0a,
+      53,   32,   32,   32, 0x0a,
 
        0        // eod
 };
 
 static const char qt_meta_stringdata_QtBoostIntegrationBindingObject[] = {
-    "QtBoostIntegrationBindingObject\0"
-    "receiverDestroyed()\0\0"
+    "QtBoostIntegrationBindingObject\0\0"
+    "receiverDestroyed()\0senderDestroyed()\0"
 };
 
 const QMetaObject QtBoostIntegrationBindingObject::staticMetaObject = {
@@ -94,9 +96,12 @@ int QtBoostIntegrationBindingObject::qt_metacall(QMetaObject::Call _c, int _id, 
     if (_id < 0)
         return _id;
 
-    // handle our one named slot
+    // handle our one named slots
     if (_id == 0) {
         receiverDestroyed();
+        return -1;
+    } else if (_id == 1) {
+        senderDestroyed(_a);
         return -1;
     }
 
@@ -114,7 +119,9 @@ int QtBoostIntegrationBindingObject::qt_metacall(QMetaObject::Call _c, int _id, 
 
 bool QtBoostIntegrationBindingObject::bind(QObject *sender, const char *signal,
                          QObject *receiver, QtBoostAbstractConnectionAdapter *adapter,
+#ifdef QTBOOSTINTEGRATION_CHECK_SIGNATURE
                          int nrArguments, int argumentList[],
+#endif
                          Qt::ConnectionType connType)
 {
     if (!sender || !signal || !adapter)
@@ -129,23 +136,38 @@ bool QtBoostIntegrationBindingObject::bind(QObject *sender, const char *signal,
     Q_ASSERT_X(!receiver || receiver->thread() == thread(),
                "qtlambda::connect", "The receiving QObject must be on the thread connect() is called in");
 
+#ifdef QTBOOSTINTEGRATION_CHECK_SIGNATURE
     QByteArray signalSignature = sender->metaObject()->normalizedSignature(signal);
     QByteArray adapterSignature = buildAdapterSignature(nrArguments, argumentList);
 
     if (!QMetaObject::checkConnectArgs(signalSignature, adapterSignature))
         return false;
+#endif
 
     // locate a free slot
     int slotIndex;
     bool alreadyKnowAboutThisReceiver = false;
+    bool alreadyKnowAboutThisSender   = false;
     for (slotIndex = 0; slotIndex < m_bindings.size(); slotIndex++) {
         if (m_bindings[slotIndex].receiver == receiver)
             alreadyKnowAboutThisReceiver = true;
+        if (m_bindings[slotIndex].sender == sender)
+            alreadyKnowAboutThisSender = true;
         if (!m_bindings[slotIndex].adapter)
             break;
     }
 
-    // wire up a connection from the binding object to the sender
+    // make sure that we will delete the connection if the receiver or sender go away
+    if (!alreadyKnowAboutThisReceiver && receiver) {
+        QObject::connect(receiver, SIGNAL(destroyed()),
+                         this, SLOT(receiverDestroyed()), Qt::UniqueConnection);
+    }
+    if (!alreadyKnowAboutThisSender) {
+        QObject::connect(sender, SIGNAL(destroyed(QObject*)),
+                         this, SLOT(senderDestroyed()), Qt::UniqueConnection);
+    }
+
+    // wire up the connection from the binding object to the sender
     bool connected = QMetaObject::connect(sender, signalIndex, this, slotIndex + bindingOffset(), connType);
     if (!connected)
         return false;
@@ -157,13 +179,6 @@ bool QtBoostIntegrationBindingObject::bind(QObject *sender, const char *signal,
         m_bindings[slotIndex] = Binding(sender, signalIndex, receiver, adapter);
     }
 
-    // and make sure that we will delete it if the receiver goes away
-    // ### should we auto-delete if senders disappear, too?
-    // ###    it costs memory on connections to possibly save memory later...
-    if (!alreadyKnowAboutThisReceiver && receiver) {
-        QObject::connect(receiver, SIGNAL(destroyed()), this, SLOT(receiverDestroyed()));
-    }
-
     static_cast<ConnectNotifyObject *>(sender)->callConnectNotify(signal);
     return true;
 }
@@ -173,6 +188,7 @@ bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal
     int signalIndex = -1;
 
     if (signal) {
+        Q_ASSERT(sender);
         signalIndex = sender->metaObject()->indexOfSignal(&signal[1]);
         if (signalIndex < 0)
             return false;
@@ -183,7 +199,7 @@ bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal
         const Binding& b = m_bindings.at(i);
         if ((b.signalIndex == signalIndex || signalIndex == -1)
                 && (b.sender == sender || !sender)
-                && b.receiver == receiver) {
+                && (b.receiver == receiver || !receiver)) {
             QMetaObject::disconnect(b.sender, b.signalIndex, b.receiver, i + bindingOffset());
             QByteArray sigName = b.sender->metaObject()->method(b.signalIndex).signature();
             sigName.prepend('2');
@@ -217,4 +233,25 @@ void QtBoostIntegrationBindingObject::receiverDestroyed()
 
     if (receiver)
         unbind(0, 0, receiver);
+}
+
+void QtBoostIntegrationBindingObject::senderDestroyed(void **_a)
+{
+    QObject *sender = this->sender();
+
+    // Workaround for an issue when a function connected to the sender's destroyed() is not called
+    int deleteLaterIndex = sender->metaObject()->indexOfSignal("destroyed()");
+    int deleteLaterIndex2 = sender->metaObject()->indexOfSignal("destroyed(QObject*)");
+    Q_ASSERT(deleteLaterIndex != -1 && deleteLaterIndex2 != -1);
+    for (int i = 0; i < m_bindings.size(); i++) {
+        const Binding &b = m_bindings.at(i);
+        if (b.sender == sender &&
+            (b.signalIndex == deleteLaterIndex || b.signalIndex == deleteLaterIndex2))
+        {
+            b.adapter->invoke(_a);
+        }
+    }
+
+    if (sender)
+        unbind(sender, 0, 0);
 }

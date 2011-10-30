@@ -1,5 +1,6 @@
 /*
  * Copyright 2010  Benjamin K. Stuhl <bks24@cornell.edu>
+ *           2011  Alexey Prokhin <alexey.prokhin@yandex.ru>
  *
  * Permission to use, copy, modify, and distribute this software
  * and its documentation for any purpose and without fee is hereby
@@ -39,8 +40,10 @@ public:
               const char *signal,
               QObject *receiver,
               QtBoostAbstractConnectionAdapter *adapter,
+#ifdef QTBOOSTINTEGRATION_CHECK_SIGNATURE
               int nrArguments,
               int argumentTypeList[],
+#endif
               Qt::ConnectionType connType);
 
     bool unbind(QObject *sender, const char *signal, QObject *receiver);
@@ -51,6 +54,7 @@ public:
 // we _do_ have the QMetaObject data for this, we just don't need moc
 public slots:
     void receiverDestroyed();
+    void senderDestroyed(void **_a);
 
     // core QObject stuff: we implement this ourselves rather than
     // via moc, since qt_metacall() is the core of the binding
