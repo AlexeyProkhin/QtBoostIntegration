@@ -26,6 +26,7 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QVector>
+#include <QtCore/QBasicTimer>
 
 class QtBoostAbstractConnectionAdapter;
 
@@ -53,15 +54,17 @@ public:
 
 // we _do_ have the QMetaObject data for this, we just don't need moc
 public slots:
-    void receiverDestroyed();
-    void senderDestroyed(void **_a);
+    void objectDestroyed(void **_a);
 
+protected:
     // core QObject stuff: we implement this ourselves rather than
     // via moc, since qt_metacall() is the core of the binding
     static const QMetaObject staticMetaObject;
     virtual const QMetaObject *metaObject() const;
     virtual void *qt_metacast(const char *);
     virtual int qt_metacall(QMetaObject::Call, int, void **argv);
+
+    virtual void timerEvent(QTimerEvent *);
 
 private:
     struct Binding {
@@ -77,6 +80,8 @@ private:
     static QByteArray buildAdapterSignature(int nrArguments, int argumentMetaTypeList[]);
 
     QVector<Binding> m_bindings;
+    QList<int> m_garbage;
+    QBasicTimer m_timer;
 };
 
 #endif // BINDINGOBJECT_P_H

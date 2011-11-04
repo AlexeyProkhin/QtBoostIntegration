@@ -25,6 +25,7 @@
 #include "qtboostintegration.h"
 
 #include <QtCore/QMetaMethod>
+#include <QtCore/QTimerEvent>
 
 class ConnectNotifyObject : public QObject {
 public:
@@ -52,7 +53,7 @@ static const uint qt_meta_data_QtBoostIntegrationBindingObject[] = {
        5,       // revision
        0,       // classname
        0,    0, // classinfo
-       2,   14, // methods
+       1,   14, // methods
        0,    0, // properties
        0,    0, // enums/sets
        0,    0, // constructors
@@ -61,14 +62,13 @@ static const uint qt_meta_data_QtBoostIntegrationBindingObject[] = {
 
  // slots: signature, parameters, type, tag, flags
       33,   32,   32,   32, 0x0a,
-      53,   32,   32,   32, 0x0a,
 
        0        // eod
 };
 
 static const char qt_meta_stringdata_QtBoostIntegrationBindingObject[] = {
     "QtBoostIntegrationBindingObject\0\0"
-    "receiverDestroyed()\0senderDestroyed()\0"
+    "objectDestroyed()\0"
 };
 
 const QMetaObject QtBoostIntegrationBindingObject::staticMetaObject = {
@@ -98,10 +98,7 @@ int QtBoostIntegrationBindingObject::qt_metacall(QMetaObject::Call _c, int _id, 
 
     // handle our one named slots
     if (_id == 0) {
-        receiverDestroyed();
-        return -1;
-    } else if (_id == 1) {
-        senderDestroyed(_a);
+        objectDestroyed(_a);
         return -1;
     }
 
@@ -149,22 +146,25 @@ bool QtBoostIntegrationBindingObject::bind(QObject *sender, const char *signal,
     bool alreadyKnowAboutThisReceiver = false;
     bool alreadyKnowAboutThisSender   = false;
     for (slotIndex = 0; slotIndex < m_bindings.size(); slotIndex++) {
-        if (m_bindings[slotIndex].receiver == receiver)
+        auto &b = m_bindings[slotIndex];
+        if (b.signalIndex < 0)
+            continue;
+        if (b.receiver == receiver || b.sender == receiver)
             alreadyKnowAboutThisReceiver = true;
-        if (m_bindings[slotIndex].sender == sender)
+        if (b.sender == sender || b.receiver == sender)
             alreadyKnowAboutThisSender = true;
-        if (!m_bindings[slotIndex].adapter)
+        if (!b.adapter)
             break;
     }
 
     // make sure that we will delete the connection if the receiver or sender go away
     if (!alreadyKnowAboutThisReceiver && receiver) {
-        QObject::connect(receiver, SIGNAL(destroyed()),
-                         this, SLOT(receiverDestroyed()), Qt::UniqueConnection);
+        QObject::connect(receiver, SIGNAL(destroyed(QObject*)),
+                         this, SLOT(objectDestroyed()), Qt::UniqueConnection);
     }
-    if (!alreadyKnowAboutThisSender) {
+    if (!alreadyKnowAboutThisSender && sender != receiver) {
         QObject::connect(sender, SIGNAL(destroyed(QObject*)),
-                         this, SLOT(senderDestroyed()), Qt::UniqueConnection);
+                         this, SLOT(objectDestroyed()), Qt::UniqueConnection);
     }
 
     // wire up the connection from the binding object to the sender
@@ -196,11 +196,13 @@ bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal
 
     bool found = false;
     for (int i = 0; i < m_bindings.size(); i++) {
-        const Binding& b = m_bindings.at(i);
-        if ((b.signalIndex == signalIndex || signalIndex == -1)
+        auto &b = m_bindings[i];
+        if (b.signalIndex >= 0
+                && (b.signalIndex == signalIndex || signalIndex == -1)
                 && (b.sender == sender || !sender)
-                && (b.receiver == receiver || !receiver)) {
-            QMetaObject::disconnect(b.sender, b.signalIndex, b.receiver, i + bindingOffset());
+                && (b.receiver == receiver || !receiver))
+        {
+            QMetaObject::disconnectOne(b.sender, b.signalIndex, this, i + bindingOffset());
             QByteArray sigName = b.sender->metaObject()->method(b.signalIndex).signature();
             sigName.prepend('2');
             static_cast<ConnectNotifyObject *>(b.sender)->callDisconnectNotify(sigName.constData());
@@ -225,33 +227,42 @@ QByteArray QtBoostIntegrationBindingObject::buildAdapterSignature
     return sig;
 }
 
-void QtBoostIntegrationBindingObject::receiverDestroyed()
+void QtBoostIntegrationBindingObject::objectDestroyed(void **_a)
 {
     // when any object for which we are holding a binding is destroyed,
     // remove all of its bindings
-    QObject *receiver = sender();
+    auto obj = *reinterpret_cast<QObject**>(_a[1]);
+    Q_ASSERT(obj);
 
-    if (receiver)
-        unbind(0, 0, receiver);
-}
-
-void QtBoostIntegrationBindingObject::senderDestroyed(void **_a)
-{
-    QObject *sender = this->sender();
-
-    // Workaround for an issue when a function connected to the sender's destroyed() is not called
-    int deleteLaterIndex = sender->metaObject()->indexOfSignal("destroyed()");
-    int deleteLaterIndex2 = sender->metaObject()->indexOfSignal("destroyed(QObject*)");
-    Q_ASSERT(deleteLaterIndex != -1 && deleteLaterIndex2 != -1);
     for (int i = 0; i < m_bindings.size(); i++) {
-        const Binding &b = m_bindings.at(i);
-        if (b.sender == sender &&
-            (b.signalIndex == deleteLaterIndex || b.signalIndex == deleteLaterIndex2))
-        {
-            b.adapter->invoke(_a);
+        auto &b = m_bindings[i];
+        if (b.signalIndex < 0)
+            continue;
+        if (b.receiver == obj) {
+            QMetaObject::disconnectOne(b.sender, b.signalIndex, this, i + bindingOffset());
+            QByteArray sigName = b.sender->metaObject()->method(b.signalIndex).signature();
+            sigName.prepend('2');
+            static_cast<ConnectNotifyObject *>(b.sender)->callDisconnectNotify(sigName.constData());
+            delete b.adapter;
+            m_bindings[i] = Binding();
+        } else if (b.sender == obj) {
+            Q_ASSERT(!m_garbage.contains(i));
+            b.signalIndex = -1; // mark as garbage
+            m_garbage << i;
+            if (!m_timer.isActive())
+                m_timer.start(0, this);
         }
     }
+}
 
-    if (sender)
-        unbind(sender, 0, 0);
+void QtBoostIntegrationBindingObject::timerEvent(QTimerEvent *ev)
+{
+    if (ev->timerId() == m_timer.timerId()) {
+        foreach (auto i, m_garbage) {
+            delete m_bindings[i].adapter;
+            m_bindings[i] = Binding();
+        }
+        m_garbage.clear();
+        m_timer.stop();
+    }
 }
