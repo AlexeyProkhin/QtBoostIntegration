@@ -27,6 +27,8 @@
 #include <QtCore/QObject>
 #include <QtCore/QVector>
 #include <QtCore/QBasicTimer>
+#include <QtCore/QSet>
+#include <QtCore/QMap>
 
 class QtBoostAbstractConnectionAdapter;
 
@@ -52,10 +54,6 @@ public:
     int bindingOffset() const
     { return metaObject()->methodOffset() + metaObject()->methodCount(); }
 
-// we _do_ have the QMetaObject data for this, we just don't need moc
-public slots:
-    void objectDestroyed(void **_a);
-
 protected:
     // core QObject stuff: we implement this ourselves rather than
     // via moc, since qt_metacall() is the core of the binding
@@ -64,10 +62,10 @@ protected:
     virtual void *qt_metacast(const char *);
     virtual int qt_metacall(QMetaObject::Call, int, void **argv);
 
-    virtual void timerEvent(QTimerEvent *);
-
 private:
-    struct Binding {
+    friend class ObjectDataStorage;
+    struct Binding
+    {
         QObject *sender;
         QObject *receiver;
         QtBoostAbstractConnectionAdapter* adapter;
@@ -77,11 +75,31 @@ private:
         Binding(QObject *s, int sIx, QObject *r, QtBoostAbstractConnectionAdapter *a)
             : sender(s), receiver(r), adapter(a), signalIndex(sIx) { }
     };
+    struct ObjectDataStorage;
+    struct ObjectData
+    {
+        ~ObjectData();
+        QSet<int> senders;
+        QSet<int> receivers;
+        QtBoostIntegrationBindingObject *bindingObj;
+        ObjectDataStorage *storage;
+        ObjectData **prev;
+        ObjectData *next;
+    };
+    struct ObjectDataStorage : public QObjectUserData
+    {
+        ~ObjectDataStorage();
+        QMap<Qt::HANDLE, QtBoostIntegrationBindingObject::ObjectData*> data;
+    };
+
+    void unbindHelper(int index, ObjectData *sender_d, ObjectData *receiver_d);
+    void objectDestroyed(ObjectData *obj);
     static QByteArray buildAdapterSignature(int nrArguments, int argumentMetaTypeList[]);
+    ObjectData *getObjectData(QObject *obj, bool create = false);
 
     QVector<Binding> m_bindings;
-    QList<int> m_garbage;
-    QBasicTimer m_timer;
+    QList<int> m_freeList;
+    ObjectData *m_objectDataList;
 };
 
 #endif // BINDINGOBJECT_P_H
