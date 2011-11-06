@@ -26,7 +26,6 @@
 
 #include <QtCore/QMetaMethod>
 #include <QtCore/QTimerEvent>
-#include <QtCore/QThread>
 #include <QtCore/QMutexLocker>
 
 class ConnectNotifyObject : public QObject {
@@ -50,11 +49,10 @@ QtBoostIntegrationBindingObject::~QtBoostIntegrationBindingObject()
         delete b.adapter;
 
     QMutexLocker locker(&mutex);
-    auto thread = QThread::currentThreadId();
     for (auto d = m_objectDataList; d; d = d->next) {
         auto &storageData = d->storage->data;
-        Q_ASSERT(storageData.contains(thread));
-        storageData.remove(thread);
+        Q_ASSERT(storageData.contains(this));
+        storageData.remove(this);
         delete d;
     }
 }
@@ -259,8 +257,9 @@ QtBoostIntegrationBindingObject::ObjectData::~ObjectData()
 
 QtBoostIntegrationBindingObject::ObjectDataStorage::~ObjectDataStorage()
 {
-    foreach (auto objectData, data)
-        objectData->bindingObj->objectDestroyed(objectData);
+    auto itr = data.constBegin();
+    for (auto end = data.constEnd(); itr != end; ++itr)
+		itr.key()->objectDestroyed(*itr);
 }
 
 auto QtBoostIntegrationBindingObject::getObjectData(QObject *obj, bool create) -> ObjectData*
@@ -275,13 +274,11 @@ auto QtBoostIntegrationBindingObject::getObjectData(QObject *obj, bool create) -
         obj->setUserData(dataIndex, storage);
     }
 
-    auto thread = QThread::currentThreadId();
-    auto data = storage->data.value(thread);
+    auto data = storage->data.value(this);
     if (!data) {
         Q_ASSERT(create);
         data = new ObjectData;
-        storage->data.insert(thread, data);
-        data->bindingObj = this;
+        storage->data.insert(this, data);
         data->storage = storage;
 
         data->next = m_objectDataList;

@@ -81,7 +81,6 @@ private:
         ~ObjectData();
         QSet<int> senders;
         QSet<int> receivers;
-        QtBoostIntegrationBindingObject *bindingObj;
         ObjectDataStorage *storage;
         ObjectData **prev;
         ObjectData *next;
@@ -89,7 +88,7 @@ private:
     struct ObjectDataStorage : public QObjectUserData
     {
         ~ObjectDataStorage();
-        QMap<Qt::HANDLE, QtBoostIntegrationBindingObject::ObjectData*> data;
+        QMap<QtBoostIntegrationBindingObject*, ObjectData*> data;
     };
 
     void unbindHelper(int index, ObjectData *sender_d, ObjectData *receiver_d);
