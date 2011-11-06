@@ -27,7 +27,6 @@
 #include <QtCore/QObject>
 #include <QtCore/QVector>
 #include <QtCore/QBasicTimer>
-#include <QtCore/QSet>
 #include <QtCore/QMap>
 
 class QtBoostAbstractConnectionAdapter;
@@ -76,11 +75,38 @@ private:
             : sender(s), receiver(r), adapter(a), signalIndex(sIx) { }
     };
     struct ObjectDataStorage;
+    struct BindingList
+    {
+        BindingList **prev;
+        BindingList *next;
+        BindingList *other;
+        int id;
+        static void add(BindingList* &front, int id)
+        {
+            BindingList *newElem = new BindingList;
+            newElem->id = id;
+            newElem->other = 0;
+            newElem->next = front;
+            front = newElem;
+            newElem->prev = &front;
+            if (newElem->next)
+                newElem->next->prev = &newElem->next;
+        }
+        void remove()
+        {
+            if (next)
+                next->prev = prev;
+            *prev = next;
+        }
+    };
     struct ObjectData
     {
+        ObjectData() :
+            senders(0), receivers(0), storage(0), prev(0), next(0)
+        {}
         ~ObjectData();
-        QSet<int> senders;
-        QSet<int> receivers;
+        BindingList *senders;
+        BindingList *receivers;
         ObjectDataStorage *storage;
         ObjectData **prev;
         ObjectData *next;
@@ -91,7 +117,8 @@ private:
         QMap<QtBoostIntegrationBindingObject*, ObjectData*> data;
     };
 
-    void unbindHelper(int index, ObjectData *sender_d, ObjectData *receiver_d);
+    template <typename T>
+    void unbindHelper(BindingList *bindings, const T &checkFn);
     void objectDestroyed(ObjectData *obj);
     static QByteArray buildAdapterSignature(int nrArguments, int argumentMetaTypeList[]);
     ObjectData *getObjectData(QObject *obj, bool create = false);

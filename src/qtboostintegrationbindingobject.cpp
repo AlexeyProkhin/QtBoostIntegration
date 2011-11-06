@@ -158,78 +158,88 @@ bool QtBoostIntegrationBindingObject::bind(QObject *sender, const char *signal,
     auto sender_d = getObjectData(sender, true);
     auto receiver_d = (receiver && receiver != sender) ? getObjectData(receiver, true) : 0;
     Q_ASSERT(sender_d);
-
-    Q_ASSERT(!sender_d->receivers.contains(slotIndex));
-    sender_d->receivers.insert(slotIndex);
+    BindingList::add(sender_d->receivers, slotIndex);
     if (receiver_d) {
-        Q_ASSERT(!receiver_d->senders.contains(slotIndex));
-        receiver_d->senders.insert(slotIndex);
+        BindingList::add(receiver_d->senders, slotIndex);
+
+        // make the sender and the receiver aware of each other
+        receiver_d->senders->other = sender_d->receivers;
+        sender_d->receivers->other = receiver_d->senders;
     }
 
     static_cast<ConnectNotifyObject *>(sender)->callConnectNotify(signal);
     return true;
 }
 
-bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal, QObject *receiver)
+template <typename T>
+inline void QtBoostIntegrationBindingObject::unbindHelper(BindingList *bindings, const T &checkFn)
 {
-    int signalIndex = -1;
+    for (auto binding = bindings; binding; ) {
+        auto next = binding->next;
+        auto &b = m_bindings[binding->id];
+        int id = binding->id;
 
-    if (signal) {
-        Q_ASSERT(sender);
-        signalIndex = sender->metaObject()->indexOfSignal(&signal[1]);
-        if (signalIndex < 0)
-            return false;
-    }
+        if (checkFn(b, id)) {
+            Q_ASSERT(b.signalIndex >= 0);
+            QByteArray sigName = b.sender->metaObject()->method(b.signalIndex).signature();
+            sigName.prepend('2');
+            static_cast<ConnectNotifyObject *>(b.sender)->callDisconnectNotify(sigName.constData());
+            delete b.adapter;
+            m_bindings[id] = Binding();
+            m_freeList.push_back(id);
 
-    auto sender_d = sender ? getObjectData(sender) : 0;
-    ObjectData *receiver_d = 0;
-    if (receiver)
-        receiver_d = (sender == receiver) ? sender_d : getObjectData(receiver);
-
-    bool found = false;
-    for (int i = 0; i < m_bindings.size(); i++) {
-        auto &b = m_bindings[i];
-        if (b.signalIndex >= 0
-                && (b.signalIndex == signalIndex || signalIndex == -1)
-                && (b.sender == sender || !sender)
-                && (b.receiver == receiver || !receiver))
-        {
-            QMetaObject::disconnectOne(b.sender, b.signalIndex, this, i + bindingOffset());
-            unbindHelper(i,
-                         sender_d   ? sender_d   : getObjectData(b.sender),
-                         receiver_d ? receiver_d : getObjectData(b.receiver));
-            found = true;
+            if (binding->other)
+                binding->other->remove();
+            binding->remove();
         }
+
+        binding = next;
     }
-    return found;
 }
 
-inline void QtBoostIntegrationBindingObject::unbindHelper(int i, ObjectData *sender_d, ObjectData *receiver_d)
+bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal, QObject *receiver)
 {
-    auto &b = m_bindings[i];
-    Q_ASSERT(b.signalIndex >= 0);
-    QByteArray sigName = b.sender->metaObject()->method(b.signalIndex).signature();
-    sigName.prepend('2');
-    static_cast<ConnectNotifyObject *>(b.sender)->callDisconnectNotify(sigName.constData());
-    if (sender_d)
-        sender_d->receivers.remove(i);
-    if (receiver_d)
-        receiver_d->senders.remove(i);
-    delete b.adapter;
-    m_bindings[i] = Binding();
-    m_freeList.push_back(i);
+    bool found = false;
+    if (sender) {
+        int signalIndex = -1;
+        if (signal) {
+            signalIndex = sender->metaObject()->indexOfSignal(&signal[1]);
+            if (signalIndex < 0)
+                return false;
+        }
+
+        auto sender_d = getObjectData(sender);
+        unbindHelper(sender_d->receivers, [=, &found](const Binding &b, int i) {
+            if ((b.signalIndex == signalIndex || signalIndex == -1) &&
+                (b.receiver == receiver || !receiver))
+            {
+                found = true;
+                QMetaObject::disconnectOne(b.sender, b.signalIndex, this, i + bindingOffset());
+                return true;
+            } else {
+                return false;
+            }
+        });
+    } else {
+        Q_ASSERT(receiver);
+        auto receiver_d = getObjectData(receiver);
+        if (receiver_d->senders)
+            found = true;
+        unbindHelper(receiver_d->senders, [=, &found](const Binding &b, int i) {
+            QMetaObject::disconnectOne(b.sender, b.signalIndex, this, i + bindingOffset());
+            return true;
+        });
+    }
+
+    return found;
 }
 
 void QtBoostIntegrationBindingObject::objectDestroyed(ObjectData *d)
 {
     // when any object for which we are holding a binding is destroyed,
     // remove all of its bindings
-
-    foreach (int i, d->senders)
-        unbindHelper(i, getObjectData(m_bindings[i].sender), 0);
-
-    foreach (int i, d->receivers)
-        unbindHelper(i, 0, getObjectData(m_bindings[i].receiver));
+    unbindHelper(d->senders, [](const Binding &, int) { return true; });
+    unbindHelper(d->receivers, [](const Binding &, int) { return true; });
 
     delete d;
 }
@@ -259,7 +269,7 @@ QtBoostIntegrationBindingObject::ObjectDataStorage::~ObjectDataStorage()
 {
     auto itr = data.constBegin();
     for (auto end = data.constEnd(); itr != end; ++itr)
-		itr.key()->objectDestroyed(*itr);
+        itr.key()->objectDestroyed(*itr);
 }
 
 auto QtBoostIntegrationBindingObject::getObjectData(QObject *obj, bool create) -> ObjectData*
