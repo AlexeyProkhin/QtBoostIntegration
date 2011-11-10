@@ -119,6 +119,7 @@ private:
 
     template <typename T>
     void unbindHelper(BindingList *bindings, const T &checkFn);
+    void callDisconnectNotify(const Binding &binding);
     void objectDestroyed(ObjectData *obj);
     static QByteArray buildAdapterSignature(int nrArguments, int argumentMetaTypeList[]);
     ObjectData *getObjectData(QObject *obj, bool create = false);

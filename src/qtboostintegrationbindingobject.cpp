@@ -181,9 +181,6 @@ inline void QtBoostIntegrationBindingObject::unbindHelper(BindingList *bindings,
 
         if (checkFn(b, id)) {
             Q_ASSERT(b.signalIndex >= 0);
-            QByteArray sigName = b.sender->metaObject()->method(b.signalIndex).signature();
-            sigName.prepend('2');
-            static_cast<ConnectNotifyObject *>(b.sender)->callDisconnectNotify(sigName.constData());
             delete b.adapter;
             m_bindings[id] = Binding();
             m_freeList.push_back(id);
@@ -195,6 +192,13 @@ inline void QtBoostIntegrationBindingObject::unbindHelper(BindingList *bindings,
 
         binding = next;
     }
+}
+
+void QtBoostIntegrationBindingObject::callDisconnectNotify(const Binding &b)
+{
+   QByteArray sigName = b.sender->metaObject()->method(b.signalIndex).signature();
+   sigName.prepend('2');
+   static_cast<ConnectNotifyObject *>(b.sender)->callDisconnectNotify(sigName.constData());
 }
 
 bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal, QObject *receiver)
@@ -215,6 +219,7 @@ bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal
             {
                 found = true;
                 QMetaObject::disconnectOne(b.sender, b.signalIndex, this, i + bindingOffset());
+                callDisconnectNotify(b);
                 return true;
             } else {
                 return false;
@@ -225,8 +230,9 @@ bool QtBoostIntegrationBindingObject::unbind(QObject *sender, const char *signal
         auto receiver_d = getObjectData(receiver);
         if (receiver_d->senders)
             found = true;
-        unbindHelper(receiver_d->senders, [=, &found](const Binding &b, int i) {
+        unbindHelper(receiver_d->senders, [=](const Binding &b, int i) {
             QMetaObject::disconnectOne(b.sender, b.signalIndex, this, i + bindingOffset());
+            callDisconnectNotify(b);
             return true;
         });
     }
@@ -238,8 +244,13 @@ void QtBoostIntegrationBindingObject::objectDestroyed(ObjectData *d)
 {
     // when any object for which we are holding a binding is destroyed,
     // remove all of its bindings
-    unbindHelper(d->senders, [](const Binding &, int) { return true; });
-    unbindHelper(d->receivers, [](const Binding &, int) { return true; });
+    unbindHelper(d->senders, [=](const Binding &b, int) {
+       callDisconnectNotify(b);
+       return true;
+    });
+    unbindHelper(d->receivers, [](const Binding &, int) {
+       return true;
+    });
 
     delete d;
 }
