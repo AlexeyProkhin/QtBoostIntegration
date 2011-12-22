@@ -244,7 +244,8 @@ void QtBoostIntegrationBindingObject::objectDestroyed(ObjectData *d)
 {
     // when any object for which we are holding a binding is destroyed,
     // remove all of its bindings
-    unbindHelper(d->senders, [=](const Binding &b, int) {
+    unbindHelper(d->senders, [=](const Binding &b, int i) {
+       QMetaObject::disconnectOne(b.sender, b.signalIndex, this, i + bindingOffset());
        callDisconnectNotify(b);
        return true;
     });
